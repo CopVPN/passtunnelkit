@@ -224,6 +224,12 @@ public class Keychain {
     public static func password(forReference reference: Data) throws -> String {
         var query = [String: Any]()
         query[kSecValuePersistentRef as String] = reference
+        #if os(macOS)
+        // Must match setScope(): the app writes the password to the data-protection
+        // keychain, so the extension has to resolve the reference there too. Without
+        // it the OpenVPN provider fails with NEVPNConnectionErrorDomainPlugin Code=7.
+        query[kSecUseDataProtectionKeychain as String] = true
+        #endif
         query[kSecReturnData as String] = true
 
         var result: AnyObject?
