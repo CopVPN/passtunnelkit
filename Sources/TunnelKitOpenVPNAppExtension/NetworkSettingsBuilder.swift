@@ -186,9 +186,22 @@ extension NetworkSettingsBuilder {
         return ipv4Settings
     }
 
+    /// Unique-local address for the IPv6 blackhole below (matches the app's WireGuard one).
+    private static let ipv6BlackholeAddress = "fd4c:6f70:7670::2"
+
     private var computedIPv6Settings: NEIPv6Settings? {
         guard let ipv6 = remoteOptions.ipv6 else {
-            return nil
+            // CopVPN: a full IPv4 tunnel from a server without IPv6 used to leave IPv6
+            // outside the tunnel (the real IPv6 address leaked). Route ::/0 into the
+            // tunnel instead; the server drops it, so IPv6 is blocked while connected.
+            guard isIPv4Gateway else {
+                return nil
+            }
+            let blackhole = NEIPv6Settings(addresses: [Self.ipv6BlackholeAddress], networkPrefixLengths: [64])
+            blackhole.includedRoutes = [NEIPv6Route.default()]
+            blackhole.excludedRoutes = []
+            log.info("Routing.IPv6: No IPv6 from server, blocking IPv6 while connected")
+            return blackhole
         }
         let ipv6Settings = NEIPv6Settings(addresses: [ipv6.address], networkPrefixLengths: [ipv6.addressPrefixLength as NSNumber])
         var neRoutes: [NEIPv6Route] = []
@@ -266,10 +279,12 @@ extension NetworkSettingsBuilder {
                 log.info("DNS: Using servers \(dnsServers)")
                 dnsSettings = NEDNSSettings(servers: dnsServers)
             } else {
-//                log.warning("DNS: No servers provided, using fall-back servers: \(fallbackDNSServers)")
-//                dnsSettings = NEDNSSettings(servers: fallbackDNSServers)
                 if isGateway {
-                    log.warning("DNS: No settings provided")
+                    // CopVPN: never fall back to the device's (ISP) resolver while all
+                    // traffic is tunneled. IPv4 only, as IPv6 is blocked above.
+                    let fallback = ["1.1.1.1", "1.0.0.1"]
+                    log.warning("DNS: No servers provided, using fall-back servers: \(fallback)")
+                    dnsSettings = NEDNSSettings(servers: fallback)
                 } else {
                     log.warning("DNS: No settings provided, using current network settings")
                 }
