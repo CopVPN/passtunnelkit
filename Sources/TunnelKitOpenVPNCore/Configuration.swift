@@ -319,6 +319,10 @@ extension OpenVPN {
         /// The method to follow in regards to the XOR patch.
         public var xorMethod: XORMethod?
 
+        /// CopVPN: on a full IPv4 tunnel, block IPv6 and fall back to public DNS when
+        /// the server provides none. `nil` means enabled.
+        public var leakProtection: Bool?
+
         /**
          Creates a `ConfigurationBuilder`.
          
@@ -382,7 +386,8 @@ extension OpenVPN {
                 proxyBypassDomains: proxyBypassDomains,
                 routingPolicies: routingPolicies,
                 noPullMask: noPullMask,
-                xorMethod: xorMethod
+                xorMethod: xorMethod,
+                leakProtection: leakProtection
             )
         }
     }
@@ -530,6 +535,9 @@ extension OpenVPN {
         /// - Seealso: `ConfigurationBuilder.xorMethod`
         public let xorMethod: XORMethod?
 
+        /// - Seealso: `ConfigurationBuilder.leakProtection`
+        public let leakProtection: Bool?
+
         // MARK: Shortcuts
 
         public var fallbackCipher: Cipher {
@@ -636,6 +644,7 @@ extension OpenVPN.Configuration {
         builder.routingPolicies = routingPolicies
         builder.noPullMask = noPullMask
         builder.xorMethod = xorMethod
+        builder.leakProtection = leakProtection
         return builder
     }
 }

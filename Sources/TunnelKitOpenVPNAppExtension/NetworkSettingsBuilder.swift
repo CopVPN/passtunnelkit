@@ -194,7 +194,7 @@ extension NetworkSettingsBuilder {
             // CopVPN: a full IPv4 tunnel from a server without IPv6 used to leave IPv6
             // outside the tunnel (the real IPv6 address leaked). Route ::/0 into the
             // tunnel instead; the server drops it, so IPv6 is blocked while connected.
-            guard isIPv4Gateway else {
+            guard isIPv4Gateway, localOptions.leakProtection ?? true else {
                 return nil
             }
             let blackhole = NEIPv6Settings(addresses: [Self.ipv6BlackholeAddress], networkPrefixLengths: [64])
@@ -279,7 +279,7 @@ extension NetworkSettingsBuilder {
                 log.info("DNS: Using servers \(dnsServers)")
                 dnsSettings = NEDNSSettings(servers: dnsServers)
             } else {
-                if isGateway {
+                if isGateway, localOptions.leakProtection ?? true {
                     // CopVPN: never fall back to the device's (ISP) resolver while all
                     // traffic is tunneled. IPv4 only, as IPv6 is blocked above.
                     let fallback = ["1.1.1.1", "1.0.0.1"]

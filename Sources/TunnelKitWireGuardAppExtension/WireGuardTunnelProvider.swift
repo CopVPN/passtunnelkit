@@ -71,6 +71,22 @@ open class WireGuardTunnelProvider: NEPacketTunnelProvider {
                     self.refreshDataCount()
                 }
                 completionHandler(nil)
+                #if os(macOS)
+                // CopVPN: with includeAllNetworks (Kill switch) macOS drops traffic while
+                // the tunnel comes up, which eats WireGuard's first handshake and costs its
+                // 5 s retry before any traffic flows. Re-apply the peers once the tunnel is
+                // up: a fresh peer isn't handshake-rate-limited, so the next packet
+                // re-handshakes straight away.
+                if tunnelProviderProtocol.includeAllNetworks {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                        self?.adapter.update(tunnelConfiguration: tunnelConfiguration) { error in
+                            if let error {
+                                wg_log(.error, message: "Handshake refresh failed: \(error.localizedDescription)")
+                            }
+                        }
+                    }
+                }
+                #endif
                 return
             }
 
@@ -115,14 +131,18 @@ open class WireGuardTunnelProvider: NEPacketTunnelProvider {
                 completionHandler()
                 return
             }
-            self.tunnelQueue.async {
+            // CopVPN: finish synchronously and report the stop BEFORE the macOS exit(0)
+            // below. Completing on tunnelQueue.async let the process exit first, so
+            // macOS logged "died unexpectedly" and waited its 5 s exit timer on every
+            // disconnect. Upstream wireguard-apple calls completionHandler() first too.
+            self.tunnelQueue.sync {
                 self.cfg._appexSetLastError(nil)
                 self.tunnelIsStarted = false
-                if let error = error {
-                    wg_log(.error, message: "Failed to stop WireGuard adapter: \(error.localizedDescription)")
-                }
-                completionHandler()
             }
+            if let error = error {
+                wg_log(.error, message: "Failed to stop WireGuard adapter: \(error.localizedDescription)")
+            }
+            completionHandler()
 
             // END: TunnelKit
 
