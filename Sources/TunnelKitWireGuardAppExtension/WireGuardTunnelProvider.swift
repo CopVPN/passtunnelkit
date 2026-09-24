@@ -73,15 +73,20 @@ open class WireGuardTunnelProvider: NEPacketTunnelProvider {
                 completionHandler(nil)
                 #if os(macOS)
                 // CopVPN: with includeAllNetworks (Kill switch) macOS drops traffic while
-                // the tunnel comes up, which eats WireGuard's first handshake and costs its
+                // the tunnel comes up, which can eat WireGuard's first handshake and cost its
                 // 5 s retry before any traffic flows. Re-apply the peers once the tunnel is
                 // up: a fresh peer isn't handshake-rate-limited, so the next packet
-                // re-handshakes straight away.
+                // re-handshakes straight away. Only when no handshake has completed:
+                // re-applying drops a working session's keys, and its new handshake can be
+                // lost while the settings re-apply — a 5 s outage right after connecting.
                 if tunnelProviderProtocol.includeAllNetworks {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-                        self?.adapter.update(tunnelConfiguration: tunnelConfiguration) { error in
-                            if let error {
-                                wg_log(.error, message: "Handshake refresh failed: \(error.localizedDescription)")
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
+                        self?.adapter.getRuntimeConfiguration { runtime in
+                            guard let self, !WireGuard.hasHandshake(runtimeConfiguration: runtime) else { return }
+                            self.adapter.update(tunnelConfiguration: tunnelConfiguration) { error in
+                                if let error {
+                                    wg_log(.error, message: "Handshake refresh failed: \(error.localizedDescription)")
+                                }
                             }
                         }
                     }

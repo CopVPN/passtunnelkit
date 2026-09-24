@@ -25,6 +25,7 @@
 
 import Foundation
 import TunnelKitCore
+import TunnelKitWireGuardCore
 
 extension DataCount {
     public static func from(wireGuardString string: String) -> DataCount? {
@@ -47,6 +48,21 @@ extension DataCount {
         }
 
         return DataCount(bytesReceived, bytesSent)
+    }
+}
+
+extension WireGuard {
+    /// Whether any peer in a wireguard-go runtime configuration (UAPI "get") has completed
+    /// a handshake — `last_handshake_time_sec` stays 0 until the first one does.
+    public static func hasHandshake(runtimeConfiguration string: String?) -> Bool {
+        var found = false
+        string?.enumerateLines { line, stop in
+            if let seconds = line.getPrefix("last_handshake_time_sec="), seconds > 0 {
+                found = true
+                stop = true
+            }
+        }
+        return found
     }
 }
 
