@@ -93,6 +93,28 @@ extension WireGuard.ProviderConfiguration: NetworkExtensionConfiguration {
     }
 }
 
+// MARK: In-place switch (CopVPN)
+
+extension WireGuard.ProviderConfiguration {
+
+    /// First byte of the app → tunnel message that swaps the running tunnel onto this
+    /// configuration without stopping it. Byte 0 is the runtime-configuration request.
+    public static let switchMessageTag: UInt8 = 1
+
+    /// App side: the provider message for `NETunnelProviderSession.sendProviderMessage`.
+    public func switchMessage() throws -> Data {
+        Data([Self.switchMessageTag]) + (try JSONEncoder().encode(self))
+    }
+
+    /// Tunnel side: the configuration carried by a switch message, or nil for any other message.
+    public static func fromSwitchMessage(_ message: Data) -> WireGuard.ProviderConfiguration? {
+        guard message.first == switchMessageTag else {
+            return nil
+        }
+        return try? JSONDecoder().decode(Self.self, from: Data(message.dropFirst()))
+    }
+}
+
 // MARK: Shared data
 
 extension WireGuard.ProviderConfiguration {

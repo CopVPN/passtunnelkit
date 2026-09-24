@@ -168,6 +168,19 @@ open class WireGuardTunnelProvider: NEPacketTunnelProvider {
                 }
                 completionHandler(data)
             }
+        } else if let newCfg = WireGuard.ProviderConfiguration.fromSwitchMessage(messageData) {
+            // CopVPN: switch servers IN PLACE. update() swaps keys, peers, addresses and
+            // DNS on the live tunnel (replace_peers), so traffic never leaves it — the
+            // app's stop/start switch exposed the real IP for ~1.3 s with Kill switch off.
+            adapter.update(tunnelConfiguration: newCfg.configuration.tunnelConfiguration) { [weak self] error in
+                if let error {
+                    wg_log(.error, message: "In-place switch failed: \(error)")
+                    completionHandler(nil)
+                    return
+                }
+                self?.tunnelQueue.async { self?.cfg = newCfg }
+                completionHandler(Data([WireGuard.ProviderConfiguration.switchMessageTag]))
+            }
         } else {
             completionHandler(nil)
         }
