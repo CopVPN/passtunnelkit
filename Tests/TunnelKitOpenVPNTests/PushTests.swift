@@ -55,6 +55,13 @@ class PushTests: XCTestCase {
         XCTAssertEqual(reply.options.dnsServers, ["209.222.18.222", "209.222.18.218"])
     }
 
+    func testDescriptionHidesAuthToken() {
+        let msg = "PUSH_REPLY,route 10.5.10.1,auth-token SESS_ID_AT_AUkQf/b3nj3L+CH4RJ=,auth-token-user dXNlcg==,ping 10"
+        let reply = try! OpenVPN.PushReply(message: msg)!
+
+        XCTAssertEqual(reply.description, "PUSH_REPLY,route 10.5.10.1,auth-token,auth-token-user,ping 10")
+    }
+
     func testSubnet() {
         let msg = "PUSH_REPLY,dhcp-option DNS 8.8.8.8,dhcp-option DNS 4.4.4.4,route-gateway 10.8.0.1,topology subnet,ping 10,ping-restart 120,ifconfig 10.8.0.2 255.255.255.0,peer-id 0"
         let reply = try! OpenVPN.PushReply(message: msg)!

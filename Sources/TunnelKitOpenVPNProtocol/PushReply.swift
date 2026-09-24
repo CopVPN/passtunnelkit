@@ -60,15 +60,12 @@ extension OpenVPN {
 
         // MARK: CustomStringConvertible
 
+        // Option by option: the anchored `Regex.authToken` never matched inside the
+        // comma-joined reply, so the auth-token went into the log.
         var description: String {
-            let stripped = NSMutableString(string: original)
-            ConfigurationParser.Regex.authToken.replaceMatches(
-                in: stripped,
-                options: [],
-                range: NSRange(location: 0, length: stripped.length),
-                withTemplate: "auth-token"
-            )
-            return stripped as String
+            original.components(separatedBy: ",").map {
+                $0.hasPrefix("auth-token") ? String($0.prefix { $0 != " " }) : $0
+            }.joined(separator: ",")
         }
     }
 }

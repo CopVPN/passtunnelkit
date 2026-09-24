@@ -24,12 +24,9 @@
 //
 
 import Foundation
-import SwiftyBeaver
 import TunnelKitCore
 import CTunnelKitCore
 import __TunnelKitUtils
-
-private let log = SwiftyBeaver.self
 
 extension OpenVPN {
 
@@ -301,10 +298,8 @@ extension OpenVPN {
             //
             var optXorMethod: XORMethod?
 
-            log.verbose("Configuration file:")
+            // Never log the lines: they include <key>, <tls-crypt> and the pushed auth-token.
             for line in lines {
-                log.verbose(line)
-
                 var isHandled = false
                 var strippedLine = line
                 defer {
