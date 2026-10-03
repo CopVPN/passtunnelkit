@@ -45,6 +45,11 @@ private let log = SwiftyBeaver.self
 public class NETunnelInterface: TunnelInterface {
     private weak var impl: NEPacketTunnelFlow?
 
+    /// CopVPN: offered each packet the device sends. A non-nil reply goes back to the device and the
+    /// packet never enters the tunnel (on-device DNS blocking, "Block ads & trackers"). Set by the
+    /// tunnel extension before the tunnel starts; nil passes everything, as before.
+    public static var outboundFilter: ((Data) -> Data?)?
+
     public init(impl: NEPacketTunnelFlow) {
         self.impl = impl
     }
@@ -67,7 +72,17 @@ public class NETunnelInterface: TunnelInterface {
         impl?.readPackets { [weak self] (packets, _) in
             queue.sync {
                 self?.loopReadPackets(queue, handler)
-                handler(packets, nil)
+                guard let filter = NETunnelInterface.outboundFilter else {
+                    handler(packets, nil)
+                    return
+                }
+                var passed: [Data] = []
+                var replies: [Data] = []
+                for packet in packets {
+                    if let reply = filter(packet) { replies.append(reply) } else { passed.append(packet) }
+                }
+                if !replies.isEmpty { self?.writePackets(replies, completionHandler: nil) }
+                if !passed.isEmpty { handler(passed, nil) }
             }
         }
     }

@@ -3,10 +3,10 @@
     {
       "identity" : "openssl-apple",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/passepartoutvpn/openssl-apple",
+      "location" : "https://github.com/0xBF90E913/openssl-apple",
       "state" : {
-        "revision" : "026702febcaebcbf9ea68f2fa66b017eba998cdf",
-        "version" : "3.2.105"
+        "revision" : "ba67936700c9a8d3621aaac28d9fca463183fd8a",
+        "version" : "3.2.110"
       }
     },
     {
@@ -19,21 +19,12 @@
       }
     },
     {
-      "identity" : "wg-go-apple",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/passepartoutvpn/wg-go-apple",
-      "state" : {
-        "revision" : "691a702cd4a1d2b5acd409040741ec123c87cf2c",
-        "version" : "0.0.20250216"
-      }
-    },
-    {
       "identity" : "wireguard-apple",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/tahirmahm123/wireguard-apple",
+      "location" : "https://github.com/CopVPN/wireguard-apple",
       "state" : {
-        "revision" : "dd20f6be8528a6ba4b2f731b4260c4c80fd0bcc9",
-        "version" : "1.0.0"
+        "branch" : "obfuscated",
+        "revision" : "62b3599a01caed097b4400dbcd7d16f53c5dd2cd"
       }
     }
   ],
