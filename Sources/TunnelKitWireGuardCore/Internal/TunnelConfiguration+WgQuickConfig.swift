@@ -24,6 +24,7 @@ extension TunnelConfiguration {
         case interfaceHasInvalidDNS(String)
         case interfaceHasInvalidMTU(String)
         case interfaceHasUnrecognizedKey(String)
+        case interfaceHasInvalidAmneziaParameters
         case peerHasNoPublicKey
         case peerHasInvalidPublicKey(String)
         case peerHasInvalidPreSharedKey(String)
@@ -73,7 +74,7 @@ extension TunnelConfiguration {
                     } else {
                         attributes[key] = value
                     }
-                    let interfaceSectionKeys: Set<String> = ["privatekey", "listenport", "address", "dns", "dnsoverhttpsurl", "dnsovertlsservername", "mtu"]
+                    let interfaceSectionKeys = Set(["privatekey", "listenport", "address", "dns", "dnsoverhttpsurl", "dnsovertlsservername", "mtu"] + AmneziaParameters.keys)
                     let peerSectionKeys: Set<String> = ["publickey", "presharedkey", "allowedips", "endpoint", "persistentkeepalive"]
                     if parserState == .inInterfaceSection {
                         guard interfaceSectionKeys.contains(key) else {
@@ -150,6 +151,9 @@ extension TunnelConfiguration {
         if let mtu = interface.mtu {
             output.append("MTU = \(mtu)\n")
         }
+        if let amnezia = interface.amnezia {
+            output.append(amnezia.wgQuickLines)
+        }
 
         for peer in peers {
             output.append("\n[Peer]\n")
@@ -220,6 +224,13 @@ extension TunnelConfiguration {
                 throw ParseError.interfaceHasInvalidMTU(mtuString)
             }
             interface.mtu = mtu
+        }
+        // AmneziaWG: all nine keys or none, never a partial or out-of-range set.
+        if AmneziaParameters.keys.contains(where: { attributes[$0] != nil }) {
+            guard let amnezia = AmneziaParameters(attributes) else {
+                throw ParseError.interfaceHasInvalidAmneziaParameters
+            }
+            interface.amnezia = amnezia
         }
         return interface
     }
