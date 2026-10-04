@@ -536,7 +536,8 @@ public class OpenVPNSession: Session {
 
         let now = Date()
         guard now.timeIntervalSince(lastPing.inbound) <= keepAliveTimeout else {
-            deferStop(.shutdown, OpenVPNError.pingTimeout)
+            // CopVPN: ping-restart semantics, a silent link reconnects instead of ending the session
+            deferStop(.reconnect, OpenVPNError.pingTimeout)
             return
         }
 

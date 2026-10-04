@@ -118,6 +118,44 @@ open class OpenVPNTunnelProvider: NEPacketTunnelProvider {
 
     private var strategy: ConnectionStrategy!
 
+    // MARK: CopVPN link repair
+
+    /// What the link repair is doing, for the subclass (the app shows "Reconnecting…", then
+    /// "No connection" after a few attempts).
+    public enum LinkRepair: Equatable {
+        /// The link was lost; attempt `attempt` (from 1) to reconnect to the same server is starting.
+        case reconnecting(attempt: Int)
+        /// A reconnect brought the tunnel back up.
+        case restored
+    }
+
+    /// Called on the tunnel queue. The default does nothing.
+    open func linkRepairDidChange(_ repair: LinkRepair) {}
+
+    /// Delay before the second and later reconnect attempts, in milliseconds.
+    public var linkRepairSpacing = 20_000
+
+    /// The tunnel has been up once in this session: from then on a lost link (ping timeout, a failed
+    /// reconnect, exhausted endpoints) never ends the tunnel, it reconnects quietly, forever, until
+    /// stopTunnel. The tunnel's routes and DNS stay in place meanwhile, so nothing leaks around it.
+    private var wasUp = false
+    private var repairAttempt = 0
+
+    private var repairsLink: Bool { wasUp && pendingStopHandler == nil }
+
+    private func repairLink(upgradedSocket: GenericSocket?) {
+        repairAttempt += 1
+        linkRepairDidChange(.reconnecting(attempt: repairAttempt))
+        strategy = ConnectionStrategy(configuration: cfg.configuration)   // the same server, first endpoint again
+        let delay = repairAttempt == 1 ? reconnectionDelay : linkRepairSpacing
+        log.info("Link lost, reconnect attempt \(repairAttempt) in \(delay) milliseconds")
+        tunnelQueue.schedule(after: .milliseconds(delay)) { [weak self] in
+            guard let self, self.repairsLink else { return }
+            self.reasserting = true
+            self.connectTunnel(upgradedSocket: upgradedSocket)
+        }
+    }
+
     // MARK: Internal state
 
     private var session: OpenVPNSession?
@@ -400,6 +438,7 @@ extension OpenVPNTunnelProvider: GenericSocketDelegate {
         log.debug("Socket timed out waiting for activity, cancelling...")
         shouldReconnect = true
         socket.shutdown()
+        if repairsLink { return }   // the shutdown reconnects (link repair)
 
         // fallback: TCP connection timeout suggests falling back
         if let _ = socket as? NETCPSocket {
@@ -449,6 +488,11 @@ extension OpenVPNTunnelProvider: GenericSocketDelegate {
 
         // clean up
         finishTunnelDisconnection(error: shutdownError)
+
+        if repairsLink {
+            repairLink(upgradedSocket: upgradedSocket)
+            return
+        }
 
         // fallback: UDP is connection-less, treat negotiation timeout as socket timeout
         if didTimeoutNegotiation {
@@ -519,6 +563,13 @@ extension OpenVPNTunnelProvider: OpenVPNSessionDelegate {
             }
 
             log.info("Tunnel interface is now UP")
+            self.tunnelQueue.async {   // this completion runs on the XPC queue
+                self.wasUp = true
+                if self.repairAttempt > 0 {
+                    self.repairAttempt = 0
+                    self.linkRepairDidChange(.restored)
+                }
+            }
 
             session.setTunnel(tunnel: NETunnelInterface(impl: self.packetFlow))
 
