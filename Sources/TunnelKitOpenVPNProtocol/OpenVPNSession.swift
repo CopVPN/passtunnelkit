@@ -85,23 +85,23 @@ public class OpenVPNSession: Session {
     /// The optional credentials.
     public var credentials: OpenVPN.Credentials?
 
+    // CopVPN: the client's own ping and ping-restart win over the pushed ones (OpenVPN's
+    // `pull-filter ignore "ping-restart"`), so the app can detect a dead server in 30 s.
     private var keepAliveInterval: TimeInterval? {
-        let interval: TimeInterval?
-        if let negInterval = pushReply?.options.keepAliveInterval, negInterval > 0.0 {
-            interval = negInterval
-        } else if let cfgInterval = configuration.keepAliveInterval, cfgInterval > 0.0 {
-            interval = cfgInterval
+        if let cfgInterval = configuration.keepAliveInterval, cfgInterval > 0.0 {
+            return cfgInterval
+        } else if let negInterval = pushReply?.options.keepAliveInterval, negInterval > 0.0 {
+            return negInterval
         } else {
             return nil
         }
-        return interval
     }
 
     private var keepAliveTimeout: TimeInterval {
-        if let negTimeout = pushReply?.options.keepAliveTimeout, negTimeout > 0.0 {
-            return negTimeout
-        } else if let cfgTimeout = configuration.keepAliveTimeout, cfgTimeout > 0.0 {
+        if let cfgTimeout = configuration.keepAliveTimeout, cfgTimeout > 0.0 {
             return cfgTimeout
+        } else if let negTimeout = pushReply?.options.keepAliveTimeout, negTimeout > 0.0 {
+            return negTimeout
         } else {
             return CoreConfiguration.OpenVPN.pingTimeout
         }
