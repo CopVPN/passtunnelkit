@@ -116,6 +116,10 @@ open class OpenVPNTunnelProvider: NEPacketTunnelProvider {
 
     private var cfg: OpenVPN.ProviderConfiguration!
 
+    /// CopVPN: the server's configuration in use, which `switchServer(to:)` replaces.
+    private var currentConfiguration: OpenVPN.Configuration { switchedConfiguration ?? cfg.configuration }
+    private var switchedConfiguration: OpenVPN.Configuration?
+
     private var strategy: ConnectionStrategy!
 
     // MARK: CopVPN link repair
@@ -146,13 +150,43 @@ open class OpenVPNTunnelProvider: NEPacketTunnelProvider {
     private func repairLink(upgradedSocket: GenericSocket?) {
         repairAttempt += 1
         linkRepairDidChange(.reconnecting(attempt: repairAttempt))
-        strategy = ConnectionStrategy(configuration: cfg.configuration)   // the same server, first endpoint again
+        strategy = ConnectionStrategy(configuration: currentConfiguration)   // the same server, first endpoint again
         let delay = repairAttempt == 1 ? reconnectionDelay : linkRepairSpacing
         log.info("Link lost, reconnect attempt \(repairAttempt) in \(delay) milliseconds")
         tunnelQueue.schedule(after: .milliseconds(delay)) { [weak self] in
             guard let self, self.repairsLink else { return }
             self.reasserting = true
             self.connectTunnel(upgradedSocket: upgradedSocket)
+        }
+    }
+
+    /// CopVPN: moves the running tunnel to another server without taking it down (doc 11: no traffic
+    /// outside the tunnel during a move). The tunnel's routes and DNS stay in place while a new
+    /// session negotiates with the new server; its network settings are applied when it is up, and
+    /// `linkRepairDidChange(.restored)` follows. If it fails, the link repair goes on with the new
+    /// server. Same credentials. `completion` gets false when the tunnel isn't up (restart instead).
+    public func switchServer(to configuration: OpenVPN.Configuration, completion: @escaping (Bool) -> Void) {
+        tunnelQueue.async { [self] in
+            guard repairsLink, let old = session,
+                  let new = try? OpenVPNSession(queue: tunnelQueue, configuration: configuration, cachesURL: cachesURL) else {
+                return completion(false)
+            }
+            log.info("Switching server in place")
+            new.credentials = old.credentials
+            new.delegate = self
+            old.delegate = nil
+            socket?.delegate = nil
+            socket?.unobserve()
+            socket?.shutdown()
+            socket = nil
+            old.cleanup()
+            session = new
+            switchedConfiguration = configuration
+            strategy = ConnectionStrategy(configuration: configuration)
+            repairAttempt = 1   // its start reports .restored; a failure goes on as attempt 2
+            reasserting = true
+            connectTunnel()
+            completion(true)
         }
     }
 
@@ -454,10 +488,10 @@ extension OpenVPNTunnelProvider: GenericSocketDelegate {
             return
         }
         if session.canRebindLink() {
-            session.rebindLink(producer.link(userObject: cfg.configuration.xorMethod))
+            session.rebindLink(producer.link(userObject: currentConfiguration.xorMethod))
             reasserting = false
         } else {
-            session.setLink(producer.link(userObject: cfg.configuration.xorMethod))
+            session.setLink(producer.link(userObject: currentConfiguration.xorMethod))
         }
     }
 
