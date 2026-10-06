@@ -35,6 +35,7 @@
 //
 
 import NetworkExtension
+import os
 import SwiftyBeaver
 #if os(iOS)
 import SystemConfiguration.CaptiveNetwork
@@ -167,8 +168,13 @@ open class OpenVPNTunnelProvider: NEPacketTunnelProvider {
     /// server. Same credentials. `completion` gets false when the tunnel isn't up (restart instead).
     public func switchServer(to configuration: OpenVPN.Configuration, completion: @escaping (Bool) -> Void) {
         tunnelQueue.async { [self] in
+            // Its own caches folder: a session writes its CA there and deletes it when released, so in
+            // the shared one the old session's release took the new one's CA (TLS error 202).
+            // ponytail: one empty folder left per switch; clean them at start if they pile up.
+            let caches = cachesURL.appendingPathComponent("switch-\(UUID().uuidString)", isDirectory: true)
             guard repairsLink, let old = session,
-                  let new = try? OpenVPNSession(queue: tunnelQueue, configuration: configuration, cachesURL: cachesURL) else {
+                  (try? FileManager.default.createDirectory(at: caches, withIntermediateDirectories: true)) != nil,
+                  let new = try? OpenVPNSession(queue: tunnelQueue, configuration: configuration, cachesURL: caches) else {
                 return completion(false)
             }
             log.info("Switching server in place")
@@ -520,6 +526,9 @@ extension OpenVPNTunnelProvider: GenericSocketDelegate {
             upgradedSocket = socket.upgraded()
         }
 
+        // CopVPN: why a link went down, in the system log (error kinds only, no addresses)
+        copLog.info("Link shut down: failure=\(failure, privacy: .public) error=\(String(describing: shutdownError), privacy: .public)")
+
         // clean up
         finishTunnelDisconnection(error: shutdownError)
 
@@ -618,6 +627,7 @@ extension OpenVPNTunnelProvider: OpenVPNSessionDelegate {
     public func sessionDidStop(_: OpenVPNSession, withError error: Error?, shouldReconnect: Bool) {
         cfg._appexSetServerConfiguration(nil)
 
+        copLog.info("Session did stop: error=\(String(describing: error), privacy: .public) reconnect=\(shouldReconnect, privacy: .public)")
         if let error = error {
             log.error("Session did stop with error: \(error)")
         } else {
@@ -835,3 +845,6 @@ private extension NEPacketTunnelProvider {
         #endif
     }
 }
+
+/// CopVPN: link and session outcomes in the system log (SwiftyBeaver's file sits in the app group).
+private let copLog = Logger(subsystem: "com.cop.CopVPN.OpenVPNTunnelKitExtension", category: "tunnelkit")
