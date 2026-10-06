@@ -50,6 +50,13 @@ public class NETunnelInterface: TunnelInterface {
     /// tunnel extension before the tunnel starts; nil passes everything, as before.
     public static var outboundFilter: ((Data) -> Data?)?
 
+    /// CopVPN: rewrites each packet the device sends before it enters the tunnel, and each packet
+    /// the tunnel delivers before the device sees it: a server switch keeps the tunnel's first
+    /// address and maps it to the new server's here, so the system never re-applies its network
+    /// settings (which briefly lets traffic out beside the tunnel). nil passes packets unchanged.
+    public static var outboundTransform: ((Data) -> Data)?
+    public static var inboundTransform: ((Data) -> Data)?
+
     public init(impl: NEPacketTunnelFlow) {
         self.impl = impl
     }
@@ -72,6 +79,7 @@ public class NETunnelInterface: TunnelInterface {
         impl?.readPackets { [weak self] (packets, _) in
             queue.sync {
                 self?.loopReadPackets(queue, handler)
+                let packets = NETunnelInterface.outboundTransform.map { packets.map($0) } ?? packets
                 guard let filter = NETunnelInterface.outboundFilter else {
                     handler(packets, nil)
                     return
@@ -88,12 +96,14 @@ public class NETunnelInterface: TunnelInterface {
     }
 
     public func writePacket(_ packet: Data, completionHandler: ((Error?) -> Void)?) {
+        let packet = NETunnelInterface.inboundTransform?(packet) ?? packet
         let protocolNumber = IPHeader.protocolNumber(inPacket: packet)
         impl?.writePackets([packet], withProtocols: [protocolNumber])
         completionHandler?(nil)
     }
 
     public func writePackets(_ packets: [Data], completionHandler: ((Error?) -> Void)?) {
+        let packets = NETunnelInterface.inboundTransform.map { packets.map($0) } ?? packets
         let protocols = packets.map {
             IPHeader.protocolNumber(inPacket: $0)
         }
