@@ -145,6 +145,9 @@ open class OpenVPNTunnelProvider: NEPacketTunnelProvider {
     /// stopTunnel. The tunnel's routes and DNS stay in place meanwhile, so nothing leaks around it.
     private var wasUp = false
     private var repairAttempt = 0
+    /// Bumped by a server switch: a repair scheduled before it must not reconnect over the new session
+    /// (Mac, 2026-10-06: attempt 2's timer fired 20 s after a switch and stalled the tunnel).
+    private var repairGeneration = 0
 
     private var repairsLink: Bool { wasUp && pendingStopHandler == nil }
 
@@ -154,8 +157,9 @@ open class OpenVPNTunnelProvider: NEPacketTunnelProvider {
         strategy = ConnectionStrategy(configuration: currentConfiguration)   // the same server, first endpoint again
         let delay = repairAttempt == 1 ? reconnectionDelay : linkRepairSpacing
         log.info("Link lost, reconnect attempt \(repairAttempt) in \(delay) milliseconds")
+        let generation = repairGeneration
         tunnelQueue.schedule(after: .milliseconds(delay)) { [weak self] in
-            guard let self, self.repairsLink else { return }
+            guard let self, self.repairsLink, self.repairGeneration == generation else { return }
             self.reasserting = true
             self.connectTunnel(upgradedSocket: upgradedSocket)
         }
@@ -178,6 +182,7 @@ open class OpenVPNTunnelProvider: NEPacketTunnelProvider {
                 return completion(false)
             }
             log.info("Switching server in place")
+            repairGeneration += 1
             new.credentials = old.credentials
             new.delegate = self
             old.delegate = nil
